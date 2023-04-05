@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 705507994}
-  m_IndirectSpecularColor: {r: 0.44657755, g: 0.49641496, b: 0.5748178, a: 1}
+  m_IndirectSpecularColor: {r: 0.4465778, g: 0.49641526, b: 0.5748185, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -996,3 +996,6 @@ MonoBehaviour:
   crouchBobAmount: 0.025
   timeToZoom: 0.2
   zomFOV: 30
+  slideSpeedIncrease: 300
+  slideBobAmount: 500
+  maxSlideDuration: 7

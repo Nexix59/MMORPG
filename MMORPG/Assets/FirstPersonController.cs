@@ -17,12 +17,14 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField] private bool canUseHeadbob = true;
     [SerializeField] private bool WillSlideOnSlopes = true;
     [SerializeField] private bool canZoom = true;
+    [SerializeField] private bool canInteract = true;
 
     [Header("Control")]
     [SerializeField] private KeyCode sprintKey = KeyCode.LeftShift;
     [SerializeField] private KeyCode jumpKey = KeyCode.Space;
     [SerializeField] private KeyCode crouchKey = KeyCode.LeftControl;
     [SerializeField] private KeyCode zoomkey = KeyCode.Mouse1;
+    [SerializeField] private KeyCode interactkey = KeyCode.Mouse0;
 
     [Header("Movement Parameters")]
     [SerializeField] private float walkSpeed = 3.0f;
@@ -65,11 +67,28 @@ public class FirstPersonController : MonoBehaviour
     private float defaultFOV;
     private Coroutine zoomRoutine;
 
+    [Header("Sliding Parameters")]
+    [SerializeField] private float slideSpeedIncrease = 2f;
+    [SerializeField] private float slideBobAmount = 0.1f;
+    [SerializeField] private float maxSlideDuration = 1f;
+    private float slideTimer = 0f;
+    private bool isSliding = false;
+
+    [Header("Interaction")]
+    [SerializeField] private Vector3 interactionRayPoint = default;
+    [SerializeField] private float interactionDistance = default;
+    [SerializeField] private LayerMask interactionLayer = default;
+    private Interactable currentInteractable;
+    
+
+
+
+
     // SLIDING PARAMETERS
 
     private Vector3 hitPointNormal;
 
-    private bool IsSliding
+    private bool IsSlidingOnSlope
     {
         get
         {
@@ -111,6 +130,18 @@ public class FirstPersonController : MonoBehaviour
         {
             HandleMovementInput();
             HandleMouseLook();
+            
+            
+             if (isSliding)
+        {
+            slideTimer += Time.deltaTime;
+            if (slideTimer >= maxSlideDuration)
+            {
+                isSliding = false;
+                slideTimer = 0f;
+            }
+        }
+
 
             if(canJump)
                 HandleJump();
@@ -123,19 +154,40 @@ public class FirstPersonController : MonoBehaviour
 
             if (canZoom)
                 HandleZoom();
+    
+            if(canInteract)
+            {
+                HandleInteractionCheck();
+                HandleInteractionInput();
+            }
 
             ApplyFinalMovements();
         }
     }
 
     private void HandleMovementInput()
-    {
-        currentInput = new Vector2((isCrouching ? crouchSpeed : IsSprinting ? sprintSpeed : walkSpeed) * Input.GetAxis("Vertical"), (isCrouching ? crouchSpeed : IsSprinting ? sprintSpeed : walkSpeed) * Input.GetAxis("Horizontal"));
+{
+    isSliding = false;
+    slideTimer = 0f;
+    
+    float currentSpeed = IsSprinting ? sprintSpeed : walkSpeed;
+    float currentInputMagnitude = new Vector2(Input.GetAxis("Vertical"), Input.GetAxis("Horizontal")).magnitude;
+    float maxInput = isCrouching ? crouchSpeed : sprintSpeed;
+    float inputAmount = currentInputMagnitude / maxInput;
+    
+    currentInput = new Vector2(currentSpeed * Input.GetAxis("Vertical"), currentSpeed * Input.GetAxis("Horizontal"));
 
-        float moveDirectionY = moveDirection.y;
-        moveDirection = (transform.TransformDirection(Vector3.forward) * currentInput.x) + (transform.TransformDirection(Vector3.right) * currentInput.y);
-        moveDirection.y = moveDirectionY;
+    float moveDirectionY = moveDirection.y;
+    moveDirection = (transform.TransformDirection(Vector3.forward) * currentInput.x) + (transform.TransformDirection(Vector3.right) * currentInput.y);
+    moveDirection.y = moveDirectionY;
+    
+    if (canCrouch && canSprint && Input.GetKeyDown(crouchKey) && currentInputMagnitude > 0f && inputAmount >= 1f)
+    {
+        isSliding = true;
     }
+}
+
+
 
     private void HandleMouseLook()
     {
@@ -197,16 +249,62 @@ public class FirstPersonController : MonoBehaviour
         }
     }
 
-    private void ApplyFinalMovements()
+private void HandleInteractionCheck()
+{
+    if(Physics.Raycast(playerCamera.ViewportPointToRay(interactionRayPoint), out RaycastHit hit, interactionDistance))
     {
-        if (!characterController.isGrounded)
-            moveDirection.y -= gravity * Time.deltaTime;
+        if(hit.collider.gameObject.layer == 9 && (currentInteractable == null  || hit.collider.gameObject.GetInstanceID() != currentInteractable.GetInstanceID()))
+        {
+            hit.collider.TryGetComponent(out currentInteractable);
 
-        if (WillSlideOnSlopes && IsSliding)
-            moveDirection += new Vector3(hitPointNormal.x, -hitPointNormal.y, hitPointNormal.z) * slopeSpeed;
-
-        characterController.Move(moveDirection * Time.deltaTime);
+            if(currentInteractable)
+                currentInteractable.OnFocus();
+        }
     }
+    else if(currentInteractable)
+    {
+        currentInteractable.OnLoseFocus();
+        currentInteractable = null;
+    }
+}
+
+private void HandleInteractionInput()
+{
+    if(Input.GetKeyDown(interactkey) && currentInteractable != null && Physics.Raycast(playerCamera.ViewportPointToRay(interactionRayPoint), out RaycastHit hit, interactionDistance, interactionLayer))
+    {
+        currentInteractable.OnInteract();
+    }
+}
+
+
+    private void ApplyFinalMovements()
+{
+    if (!characterController.isGrounded)
+        moveDirection.y -= gravity * Time.deltaTime;
+
+    if (WillSlideOnSlopes && IsSlidingOnSlope && !isSliding)
+        moveDirection += new Vector3(hitPointNormal.x, -hitPointNormal.y, hitPointNormal.z) * slopeSpeed;
+
+    if (isSliding)
+    {
+        float slideSpeed = sprintSpeed + slideSpeedIncrease;
+        moveDirection = transform.forward * slideSpeed;
+        playerCamera.transform.localPosition = new Vector3(
+            playerCamera.transform.localPosition.x,
+            defaultYPos - slideBobAmount,
+            playerCamera.transform.localPosition.z);
+    }
+    else
+    {
+        playerCamera.transform.localPosition = new Vector3(
+            playerCamera.transform.localPosition.x,
+            defaultYPos,
+            playerCamera.transform.localPosition.z);
+    }
+
+    characterController.Move(moveDirection * Time.deltaTime);
+}
+
 
     private IEnumerator CrouchStand()
     {
@@ -253,4 +351,10 @@ public class FirstPersonController : MonoBehaviour
         playerCamera.fieldOfView = targetFOV;
         zoomRoutine = null;
     }
+
+    Vector3 ForwardDirection;
+    
+
+    
+
 }
