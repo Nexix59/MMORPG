@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 public class FirstPersonController : MonoBehaviour
@@ -18,6 +19,7 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField] private bool WillSlideOnSlopes = true;
     [SerializeField] private bool canZoom = true;
     [SerializeField] private bool canInteract = true;
+    [SerializeField] private bool useFootsteps = true;
 
     [Header("Control")]
     [SerializeField] private KeyCode sprintKey = KeyCode.LeftShift;
@@ -37,6 +39,17 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField, Range(1, 10)] private float lookSpeedY = 2.0f;
     [SerializeField, Range(1, 100)] private float upperLookLimit = 80.0f;
     [SerializeField, Range(1, 100)] private float lowerLookLimit = 80.0f;
+
+    [Header("Health Parameters")]
+    [SerializeField] private float maxHealth = 100;
+    [SerializeField] private float timeBeforeRegenStarts = 3;
+    [SerializeField] private float healthValueIncrement = 1;
+    [SerializeField] private float healthTimeIncrement = 0.1f;
+    private float currentHealth;
+    private Coroutine regeneratingHealth;
+    public static Action<float> OnTakeDamage;
+    public static Action<float> OnDamage;
+    public static Action<float> OnHeal;
 
     [Header("Jumping Parameters")]
     [SerializeField] private float jumpForce = 8.0f;
@@ -67,6 +80,17 @@ public class FirstPersonController : MonoBehaviour
     private float defaultFOV;
     private Coroutine zoomRoutine;
 
+    [Header("Footstep Parameters")]
+    [SerializeField] private float baseStepSpeed = 0.5f;
+    [SerializeField] private float crouchStepMultipler = 1.5f;
+    [SerializeField] private float sprintStepMultipler = 0.6f;
+    [SerializeField] private AudioSource footstepAudioSource = default;
+    [SerializeField] private AudioClip[] woodClips = default;
+    [SerializeField] private AudioClip[] metalClips = default;
+    [SerializeField] private AudioClip[] grassClips = default;
+    private float footstepTimer = 0;
+    private float GetCurrentOffset => isCrouching ? baseStepSpeed * crouchStepMultipler : IsSprinting ? baseStepSpeed * sprintStepMultipler : baseStepSpeed;
+
     [Header("Sliding Parameters")]
     [SerializeField] private float slideSpeedIncrease = 2f;
     [SerializeField] private float slideBobAmount = 0.1f;
@@ -79,10 +103,24 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField] private float interactionDistance = default;
     [SerializeField] private LayerMask interactionLayer = default;
     private Interactable currentInteractable;
-    
 
+    /* private Camera playerCamera;
+    private CharacterController characterController;
 
+    private Vector3 moveDirection;
+    private Vector2 currentInput;
 
+    private float rotationX = 0;*/
+
+    private void OnEnable()
+    {
+        OnTakeDamage += ApplyDamage;
+    }
+
+    private void OnDisable()
+    {
+        OnTakeDamage -= ApplyDamage;
+    }
 
     // SLIDING PARAMETERS
 
@@ -120,6 +158,7 @@ public class FirstPersonController : MonoBehaviour
         characterController = GetComponent<CharacterController>();
         defaultYPos = playerCamera.transform.localPosition.y;
         defaultFOV = playerCamera.fieldOfView;
+        currentHealth = maxHealth;
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
@@ -154,6 +193,9 @@ public class FirstPersonController : MonoBehaviour
 
             if (canZoom)
                 HandleZoom();
+
+            if (useFootsteps)
+                Handle_Footsteps();
     
             if(canInteract)
             {
@@ -276,6 +318,61 @@ private void HandleInteractionInput()
     }
 }
 
+    private void Handle_Footsteps()
+    {
+        if (!characterController.isGrounded) return;
+        if (currentInput == Vector2.zero) return;
+
+        footstepTimer -= Time.deltaTime;
+
+        if(footstepTimer <= 0)
+        {
+            if(Physics.Raycast(playerCamera.transform.position, Vector3.down, out RaycastHit hit, 3))
+            {
+                switch (hit.collider.tag)
+                {
+                    case "Footsteps/Grass":
+                        footstepAudioSource.PlayOneShot(grassClips[UnityEngine.Random.Range(0, grassClips.Length - 1)]);
+                        break;
+                    case "Footsteps/Metal":
+                        footstepAudioSource.PlayOneShot(metalClips[UnityEngine.Random.Range(0, metalClips.Length - 1)]);
+                        break;
+                    case "Footsteps/Wood":
+                        footstepAudioSource.PlayOneShot(woodClips[UnityEngine.Random.Range(0, woodClips.Length - 1)]);
+                        break;
+                    default:
+                        footstepAudioSource.PlayOneShot(woodClips[UnityEngine.Random.Range(0, woodClips.Length - 1)]);
+                        break;
+                }
+            }
+
+            footstepTimer = GetCurrentOffset;
+        }
+    }
+
+    private void ApplyDamage(float dmg)
+    {
+        currentHealth -= dmg;
+        OnDamage?.Invoke(currentHealth);
+
+
+        if (currentHealth <= 0)
+            KillPlayer();
+        else if (regeneratingHealth != null)
+            StopCoroutine(regeneratingHealth);
+
+        regeneratingHealth = StartCoroutine(RegenerateHealth());
+    }
+
+    private void KillPlayer()
+    {
+        currentHealth = 0;
+
+        if (regeneratingHealth != null)
+            StopCoroutine(regeneratingHealth);
+
+        print("DEAD");
+    }
 
     private void ApplyFinalMovements()
 {
@@ -354,7 +451,22 @@ private void HandleInteractionInput()
 
     Vector3 ForwardDirection;
     
+    private IEnumerator RegenerateHealth()
+    {
+        yield return new WaitForSeconds(timeBeforeRegenStarts);
+        WaitForSeconds timeToWait = new WaitForSeconds(healthTimeIncrement);
 
-    
+        while(currentHealth < maxHealth)
+        {
+            currentHealth += healthValueIncrement;
 
+            if (currentHealth > maxHealth)
+                currentHealth = maxHealth;
+
+            OnHeal?.Invoke(currentHealth);
+            yield return timeToWait;
+        }
+
+        regeneratingHealth = null;
+    }
 }
