@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class FirstPersonController : MonoBehaviour
 {
@@ -370,8 +371,9 @@ private void HandleInteractionInput()
 
         if (regeneratingHealth != null)
             StopCoroutine(regeneratingHealth);
-
-        print("DEAD");
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        SceneManager.LoadScene(0);
     }
 
     private void ApplyFinalMovements()
