@@ -29,4 +29,11 @@ public class MainMenu : MonoBehaviour
 
     }
 
+    public void BacktoMenu()
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        SceneManager.LoadScene(0);
+    }
+
 }
